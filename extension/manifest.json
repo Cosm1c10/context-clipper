@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Context Clipper",
+  "version": "1.0",
+  "description": "Save context to Gemini and chat with it.",
+  "permissions": [
+    "contextMenus",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
