@@ -94,20 +94,19 @@ async def chat(request: ChatRequest):
 
         # Construct context
         context = ""
-        for record, score in results:
-            # record is likely the metadata dict or contains it
-            # Based on debug output, it seems to be the metadata dict directly or accessible
-            # If it's a Row, accessing by key might work if it has columns, but here it seems to be the data.
-            # Let's assume record is the metadata dict for now.
-            # If record is a Row object acting like a dict:
-            meta = record
-            if hasattr(record, 'metadata'):
-                 meta = record.metadata
-            
+        for result_item in results:
+            # vecs returns tuples of (id, distance, metadata) when include_metadata=True
+            if len(result_item) >= 3:
+                record_id, distance, meta = result_item[0], result_item[1], result_item[2]
+            else:
+                # Fallback: try to get metadata from the record
+                meta = result_item[2] if len(result_item) > 2 else {}
+
             # If meta is the dict containing text and url
-            text = meta.get('text', '')
-            url = meta.get('url', '')
-            context += f"Source ({url}): {text}\n\n"
+            if isinstance(meta, dict):
+                text = meta.get('text', '')
+                url = meta.get('url', '')
+                context += f"Source ({url}): {text}\n\n"
 
         if not context:
             return {"answer": "No relevant context found to answer your question."}
@@ -125,4 +124,4 @@ async def chat(request: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
