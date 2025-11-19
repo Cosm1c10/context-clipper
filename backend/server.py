@@ -2,10 +2,11 @@ import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+# Configure gRPC to bypass proxy for Google APIs
+os.environ['no_grpc_proxy'] = '*'
+os.environ['NO_GRPC_PROXY'] = '*'
 # Configure gRPC SSL before importing google libraries
 os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = '/etc/ssl/certs/ca-certificates.crt'
-os.environ['GRPC_TRACE'] = 'tcp'
-os.environ['GRPC_VERBOSITY'] = 'INFO'
 
 import google.generativeai as genai
 import vecs
@@ -26,7 +27,11 @@ if not GEMINI_API_KEY:
 if not DB_CONNECTION:
     print("Warning: DB_CONNECTION not found in .env")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# Configure Gemini with REST transport to avoid proxy issues
+genai.configure(
+    api_key=GEMINI_API_KEY,
+    transport='rest'
+)
 
 app = FastAPI()
 
