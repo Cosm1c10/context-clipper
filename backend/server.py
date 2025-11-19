@@ -1,14 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
-# Configure gRPC to bypass proxy for Google APIs
-os.environ['no_grpc_proxy'] = '*'
-os.environ['NO_GRPC_PROXY'] = '*'
-# Configure gRPC SSL before importing google libraries
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = '/etc/ssl/certs/ca-certificates.crt'
-
-import google.generativeai as genai
+from openai import OpenAI
 import vecs
 from dotenv import load_dotenv
 
@@ -18,20 +11,23 @@ from pathlib import Path
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
+# Add supabase.co to NO_PROXY to bypass proxy for database connections
+current_no_proxy = os.environ.get('NO_PROXY', '')
+if '*.supabase.co' not in current_no_proxy:
+    os.environ['NO_PROXY'] = current_no_proxy + ',*.supabase.co,supabase.co'
+    os.environ['no_proxy'] = current_no_proxy + ',*.supabase.co,supabase.co'
+
 # Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DB_CONNECTION = os.getenv("DB_CONNECTION")
 
-if not GEMINI_API_KEY:
-    print("Warning: GEMINI_API_KEY not found in .env")
+if not OPENAI_API_KEY:
+    print("Warning: OPENAI_API_KEY not found in .env")
 if not DB_CONNECTION:
     print("Warning: DB_CONNECTION not found in .env")
 
-# Configure Gemini with REST transport to avoid proxy issues
-genai.configure(
-    api_key=GEMINI_API_KEY,
-    transport='rest'
-)
+# Initialize OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = FastAPI()
 
@@ -40,8 +36,8 @@ def get_collection():
     if not DB_CONNECTION:
         raise HTTPException(status_code=500, detail="DB_CONNECTION not configured")
     vx = vecs.create_client(DB_CONNECTION)
-    # Create a collection for clips with 768 dimensions (text-embedding-004)
-    return vx.get_or_create_collection(name="gemini_clips", dimension=768)
+    # Create a collection for clips with 1536 dimensions (text-embedding-3-small)
+    return vx.get_or_create_collection(name="openai_clips", dimension=1536)
 
 class SaveRequest(BaseModel):
     text: str
@@ -53,23 +49,18 @@ class ChatRequest(BaseModel):
 @app.post("/save")
 async def save_clip(request: SaveRequest):
     try:
-        # Generate embedding
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=request.text,
-            task_type="retrieval_document",
-            title="Context Clip"
+        # Generate embedding using OpenAI
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=request.text
         )
-        embedding = result['embedding']
+        embedding = response.data[0].embedding
 
         # Save to Supabase
         clips = get_collection()
-        # Using URL as ID might be risky if duplicates, but simple for now. 
-        # Better to use a UUID or hash. Let's use a simple hash of text for dedup or just random.
-        # For this task, let's just upsert.
         import uuid
         record_id = str(uuid.uuid4())
-        
+
         clips.upsert(
             records=[
                 (
@@ -87,13 +78,12 @@ async def save_clip(request: SaveRequest):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        # Embed question
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=request.question,
-            task_type="retrieval_query"
+        # Embed question using OpenAI
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=request.question
         )
-        question_embedding = result['embedding']
+        question_embedding = response.data[0].embedding
 
         # Query Supabase
         clips = get_collection()
@@ -122,12 +112,16 @@ async def chat(request: ChatRequest):
         if not context:
             return {"answer": "No relevant context found to answer your question."}
 
-        # Generate answer
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {request.question}"
-        
-        response = model.generate_content(prompt)
-        return {"answer": response.text}
+        # Generate answer using OpenAI
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that answers questions based on provided context."},
+                {"role": "user", "content": f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {request.question}"}
+            ]
+        )
+
+        return {"answer": completion.choices[0].message.content}
 
     except Exception as e:
         print(f"Error in chat: {e}")

@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-google-generativeai
+openai
 vecs
 python-dotenv
 psycopg2-binary
