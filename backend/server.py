@@ -1,6 +1,12 @@
 import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+# Configure gRPC SSL before importing google libraries
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = '/etc/ssl/certs/ca-certificates.crt'
+os.environ['GRPC_TRACE'] = 'tcp'
+os.environ['GRPC_VERBOSITY'] = 'INFO'
+
 import google.generativeai as genai
 import vecs
 from dotenv import load_dotenv
