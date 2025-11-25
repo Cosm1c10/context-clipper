@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Context Clipper</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+
+    .container {
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      color: white;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    button {
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .btn-primary {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #45a049;
+    }
+
+    .btn-secondary {
+      background: #2196F3;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #0b7dda;
+    }
+
+    .btn-dashboard {
+      background: #FF9800;
+      color: white;
+    }
+
+    .btn-dashboard:hover {
+      background: #e68900;
+    }
+
+    .chat-section {
+      margin-top: 12px;
+    }
+
+    .chat-input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 10px;
+      font-family: inherit;
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      padding: 12px 0;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .shortcuts {
+      font-size: 11px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .shortcuts strong {
+      color: #333;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #e8f5e9;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #2e7d32;
+      margin-bottom: 12px;
+    }
+
+    .status.offline {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4CAF50;
+    }
+
+    .dot.offline {
+      background: #f44336;
+    }
+
+    #answer-section {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📋 Context Clipper</h1>
+      <p>Your AI-powered clipboard</p>
+    </div>
+
+    <div id="status" class="status">
+      <div class="dot"></div>
+      <span>Backend connected</span>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="clip-count">0</div>
+          <div class="stat-label">Clips Saved</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="query-count">0</div>
+          <div class="stat-label">AI Queries</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card quick-actions">
+      <button class="btn-primary" id="save-selection">
+        💾 Save Current Selection
+      </button>
+      <button class="btn-dashboard" id="open-dashboard">
+        📊 Open Dashboard
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="chat-section">
+        <input
+          type="text"
+          class="chat-input"
+          id="question-input"
+          placeholder="Ask AI anything about your clips..."
+        >
+        <button class="btn-secondary" id="ask-btn">
+          🤔 Ask AI
+        </button>
+      </div>
+
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>Thinking...</div>
+      </div>
+
+      <div id="answer-section"></div>
+    </div>
+
+    <div class="card shortcuts">
+      <strong>⌨️ Keyboard Shortcuts:</strong><br>
+      <strong>Ctrl+Shift+S</strong> - Save selection<br>
+      <strong>Ctrl+Shift+D</strong> - Open dashboard
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

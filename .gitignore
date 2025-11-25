@@ -1,17 +1,69 @@
+# Environment variables
+.env
+backend/.env
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-venv/
-.env
-.venv
-env/
-ENV/
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PKGINFO
 
-# IDEs
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node modules (if you add any)
+node_modules/
+
+# Test files (keep them local)
+test_*.py
+debug_*.py
+create_icons.py
+list_models.py
+check_setup.py
+view_clips.py
+test_page.html
