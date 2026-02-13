@@ -1,14 +1,12 @@
 {
   "builds": [
-    {
-      "src": "backend/server.py",
-      "use": "@vercel/python"
-    }
+    { "src": "public/**", "use": "@vercel/static" },
+    { "src": "backend/server.py", "use": "@vercel/python" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "backend/server.py"
-    }
+    { "src": "/config\\.js", "dest": "/public/config.js" },
+    { "src": "/dashboard\\.js", "dest": "/public/dashboard.js" },
+    { "src": "^/$", "dest": "/public/index.html" },
+    { "src": "/(.*)", "dest": "/backend/server.py" }
   ]
 }
