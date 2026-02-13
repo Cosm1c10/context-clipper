@@ -1,11 +1,22 @@
 const API = "http://localhost:8001";
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await checkBackend();
-  await loadProjects();
+  try {
+    await checkBackend();
+    await loadProjects();
+  } catch (e) {
+    console.error("Init error:", e);
+  }
 
-  document.getElementById("save-btn").addEventListener("click", saveSelection);
-  document.getElementById("dashboard-btn").addEventListener("click", () => {
+  document.getElementById("save-btn").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    saveSelection();
+  });
+
+  document.getElementById("dashboard-btn").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
   });
 });
@@ -43,36 +54,77 @@ async function loadProjects() {
   }
 }
 
+async function getSelectedText() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab || !tab.url) return null;
+
+    // Skip restricted pages
+    if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") ||
+        tab.url.startsWith("about:") || tab.url.startsWith("edge://")) {
+      return null;
+    }
+
+    // Try sending message to existing content script
+    try {
+      const result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
+      if (result && result.text && result.text.trim()) {
+        return { text: result.text.trim(), tab };
+      }
+    } catch {
+      // Content script not loaded, try injecting
+    }
+
+    // Inject content script and retry
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+      // Small delay for script to initialize
+      await new Promise(r => setTimeout(r, 100));
+      const result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
+      if (result && result.text && result.text.trim()) {
+        return { text: result.text.trim(), tab };
+      }
+    } catch {
+      // Could not inject or get selection
+    }
+
+    // Last resort: try executeScript to get selection directly
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.getSelection().toString()
+      });
+      if (results && results[0] && results[0].result && results[0].result.trim()) {
+        return { text: results[0].result.trim(), tab };
+      }
+    } catch {
+      // Could not execute script
+    }
+
+    return { text: null, tab };
+  } catch (e) {
+    console.error("getSelectedText error:", e);
+    return null;
+  }
+}
+
 async function saveSelection() {
   const btn = document.getElementById("save-btn");
   const projectId = document.getElementById("project-select").value || null;
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const result = await getSelectedText();
 
-    if (!tab || !tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
-      showMessage("Cannot save from this page", "warning");
+    if (!result) {
+      showMessage("Cannot access this page", "warning");
       return;
     }
 
-    let result;
-    try {
-      result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
-    } catch {
-      // Content script not loaded — try injecting it first
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ["content.js"]
-        });
-        result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
-      } catch {
-        showMessage("Select text on a webpage first", "warning");
-        return;
-      }
-    }
-
-    if (!result || !result.text || !result.text.trim()) {
+    if (!result.text) {
       showMessage("No text selected on page", "warning");
       return;
     }
@@ -80,13 +132,13 @@ async function saveSelection() {
     btn.disabled = true;
     btn.textContent = "Saving...";
 
-    const response = await new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           action: "saveClip",
           text: result.text,
-          url: tab.url,
-          title: tab.title,
+          url: result.tab.url,
+          title: result.tab.title,
           projectId: projectId,
         },
         (resp) => {
@@ -101,13 +153,10 @@ async function saveSelection() {
       );
     });
 
-    showMessage("Saved successfully!", "success");
-
-    const { clipCount } = await chrome.storage.local.get(["clipCount"]);
-    await chrome.storage.local.set({ clipCount: (clipCount || 0) + 1 });
-
+    showMessage("Saved!", "success");
     await loadProjects();
   } catch (e) {
+    console.error("Save error:", e);
     showMessage(e.message || "Failed to save", "error");
   } finally {
     btn.disabled = false;

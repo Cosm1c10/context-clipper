@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Context Bridge",
+  "name": "Context Clipper",
   "version": "2.0",
   "description": "Save context from the web and inject it into ChatGPT, Claude, and Gemini.",
   "permissions": [
@@ -11,7 +11,9 @@
     "scripting"
   ],
   "host_permissions": [
-    "http://localhost:8001/*"
+    "http://localhost:8001/*",
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "background.js"
