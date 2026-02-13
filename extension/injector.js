@@ -462,6 +462,7 @@ function createBridgeUI() {
       <div class="cc-seg">
         <button class="cc-seg-btn on" data-sec="save">Save Chat</button>
         <button class="cc-seg-btn" data-sec="inject">Inject</button>
+        <button class="cc-seg-btn" data-sec="media">Media</button>
       </div>
 
       <!-- ═══ SAVE SECTION ═══ -->
@@ -536,6 +537,67 @@ function createBridgeUI() {
 
     </div>
 
+      <!-- ═══ MEDIA SECTION ═══ -->
+      <div class="cc-section" id="sec-media">
+        <div class="cc-content">
+
+          <div>
+            <div class="cc-field-label">Save to Project</div>
+            <select class="cc-select" id="media-project">
+              <option value="">No project (unsorted)</option>
+            </select>
+          </div>
+
+          <button class="cc-btn-secondary" id="btn-screenshot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            Screenshot Page
+          </button>
+
+          <button class="cc-btn-secondary" id="btn-scan-images">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            Save Images
+          </button>
+
+          <div id="image-grid" style="display:none;">
+            <div class="cc-field-label">Select images to save</div>
+            <div id="image-grid-items" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;max-height:200px;overflow-y:auto;"></div>
+            <button class="cc-btn-primary" id="btn-save-selected-images" style="margin-top:10px;" disabled>Save Selected</button>
+          </div>
+
+          <div>
+            <div class="cc-field-label">Upload File</div>
+            <div id="file-drop-zone" style="
+              border: 2px dashed rgba(255,255,255,0.08);
+              border-radius: 10px;
+              padding: 20px;
+              text-align: center;
+              cursor: pointer;
+              font-size: 11px;
+              color: #636366;
+              transition: all 0.15s;
+            ">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px;opacity:0.4;display:block;margin-left:auto;margin-right:auto;">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Drop .txt, .md, or .pdf files here<br>or click to browse
+              <input type="file" id="file-input" accept=".txt,.md,.pdf,.csv,.json" style="display:none;">
+            </div>
+          </div>
+
+          <div class="cc-toast" id="media-toast" style="display:none;"></div>
+
+        </div>
+      </div>
+
     <!-- Toggle tab -->
     <div class="cc-toggle" id="cc-toggle">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -566,6 +628,34 @@ function createBridgeUI() {
   document.getElementById("btn-capture").addEventListener("click", captureConversation);
   document.getElementById("btn-save").addEventListener("click", saveConversation);
 
+  // Media tab handlers
+  document.getElementById("btn-screenshot").addEventListener("click", mediaScreenshot);
+  document.getElementById("btn-scan-images").addEventListener("click", mediaScanImages);
+  document.getElementById("btn-save-selected-images").addEventListener("click", mediaSaveSelectedImages);
+
+  const dropZone = document.getElementById("file-drop-zone");
+  const fileInput = document.getElementById("file-input");
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "rgba(10, 132, 255, 0.5)";
+    dropZone.style.background = "rgba(10, 132, 255, 0.05)";
+  });
+  dropZone.addEventListener("dragleave", () => {
+    dropZone.style.borderColor = "rgba(255,255,255,0.08)";
+    dropZone.style.background = "transparent";
+  });
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "rgba(255,255,255,0.08)";
+    dropZone.style.background = "transparent";
+    if (e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length > 0) handleFileUpload(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
   loadAllProjects();
 }
 
@@ -590,7 +680,7 @@ async function loadAllProjects() {
     projects = [];
   }
 
-  ["save-project", "inject-project"].forEach(id => {
+  ["save-project", "inject-project", "media-project"].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
 
@@ -759,9 +849,13 @@ async function onInjectProjectChange() {
     return;
   }
 
+  // Show loading state
+  preview.innerHTML = '<div class="cc-preview-placeholder">Generating context bridge...</div>';
+  preview.style.display = "block";
+
   try {
-    const data = await ccFetch(`${CC_API}/projects/${id}/export`);
-    if (!data.context || data.context === "No clips in this project.") {
+    const data = await ccFetch(`${CC_API}/projects/${id}/bridge?format=yaml`);
+    if (!data.bridge || data.bridge === "No clips in this project.") {
       stats.style.display = "none";
       preview.style.display = "none";
       btn.disabled = true;
@@ -769,7 +863,7 @@ async function onInjectProjectChange() {
       return;
     }
 
-    exportedContext = data.context;
+    exportedContext = data.bridge;
     const words = exportedContext.split(/\s+/).length;
 
     document.getElementById("inject-clips").textContent = data.clip_count || 0;
@@ -792,7 +886,7 @@ async function injectContext() {
   const el = findChatInput();
   if (!el) { toast("inject-toast", "Chat input not found", true); return; }
 
-  putText(el, "Here is relevant context for our conversation:\n\n" + exportedContext);
+  putText(el, exportedContext);
   toast("inject-toast", "Context injected!", false);
   setTimeout(closePanel, 1200);
 }
@@ -822,6 +916,167 @@ function putText(el, text) {
     if (!el.textContent) { el.textContent = text; el.dispatchEvent(new Event("input", { bubbles: true })); }
   }
   el.focus();
+}
+
+// ══════════════════════
+//  MEDIA TAB
+// ══════════════════════
+
+function mediaScreenshot() {
+  const btn = document.getElementById("btn-screenshot");
+  const projectId = document.getElementById("media-project").value || null;
+  btn.textContent = "Capturing...";
+
+  sendBg({ action: "saveScreenshot", projectId })
+    .then(() => {
+      toast("media-toast", "Screenshot saved!", false);
+    })
+    .catch((e) => {
+      toast("media-toast", e.message || "Screenshot failed", true);
+    })
+    .finally(() => {
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.5;">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        Screenshot Page`;
+    });
+}
+
+let scannedImages = [];
+
+function mediaScanImages() {
+  const images = document.querySelectorAll("img");
+  scannedImages = [];
+  const seen = new Set();
+
+  images.forEach(img => {
+    if (img.src && img.naturalWidth > 50 && img.naturalHeight > 50 && !seen.has(img.src)) {
+      seen.add(img.src);
+      scannedImages.push({ src: img.src, alt: img.alt || img.title || "" });
+    }
+  });
+
+  const grid = document.getElementById("image-grid");
+  const items = document.getElementById("image-grid-items");
+
+  if (scannedImages.length === 0) {
+    toast("media-toast", "No images found on this page", true);
+    grid.style.display = "none";
+    return;
+  }
+
+  items.innerHTML = "";
+  scannedImages.forEach((img, i) => {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+      position: relative;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      aspect-ratio: 1;
+    `;
+    wrapper.innerHTML = `
+      <img src="${img.src}" style="width:100%;height:100%;object-fit:cover;display:block;" />
+      <div style="position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:4px;border:1.5px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;" class="img-check">&#10003;</div>
+    `;
+    wrapper.addEventListener("click", () => {
+      wrapper.dataset.selected = wrapper.dataset.selected === "true" ? "false" : "true";
+      wrapper.style.borderColor = wrapper.dataset.selected === "true" ? "#0a84ff" : "transparent";
+      const check = wrapper.querySelector(".img-check");
+      check.style.color = wrapper.dataset.selected === "true" ? "white" : "transparent";
+      check.style.background = wrapper.dataset.selected === "true" ? "#0a84ff" : "rgba(0,0,0,0.4)";
+      updateImageSaveBtn();
+    });
+    wrapper.dataset.selected = "false";
+    wrapper.dataset.index = i;
+    items.appendChild(wrapper);
+  });
+
+  grid.style.display = "block";
+  toast("media-toast", `Found ${scannedImages.length} images`, false);
+}
+
+function updateImageSaveBtn() {
+  const items = document.getElementById("image-grid-items");
+  const selected = items.querySelectorAll('[data-selected="true"]');
+  document.getElementById("btn-save-selected-images").disabled = selected.length === 0;
+}
+
+async function mediaSaveSelectedImages() {
+  const items = document.getElementById("image-grid-items");
+  const selected = items.querySelectorAll('[data-selected="true"]');
+  const projectId = document.getElementById("media-project").value || null;
+  const btn = document.getElementById("btn-save-selected-images");
+
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+
+  let saved = 0;
+  for (const wrapper of selected) {
+    const idx = parseInt(wrapper.dataset.index);
+    const img = scannedImages[idx];
+    try {
+      await sendBg({
+        action: "saveImage",
+        imageUrl: img.src,
+        altText: img.alt,
+        url: window.location.href,
+        title: document.title,
+        projectId
+      });
+      saved++;
+    } catch (e) {
+      console.error("Failed to save image:", e);
+    }
+  }
+
+  toast("media-toast", `Saved ${saved} image${saved !== 1 ? "s" : ""}!`, false);
+  btn.disabled = false;
+  btn.textContent = "Save Selected";
+  document.getElementById("image-grid").style.display = "none";
+}
+
+function handleFileUpload(file) {
+  const projectId = document.getElementById("media-project").value || null;
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    let text = reader.result;
+
+    // For non-text files, just note the filename
+    if (!text || text.length === 0) {
+      text = `[Binary file: ${file.name}]`;
+    }
+
+    // Truncate very large files
+    if (text.length > 100000) {
+      text = text.substring(0, 100000) + "\n\n[Truncated - file too large]";
+    }
+
+    try {
+      await sendBg({
+        action: "saveFile",
+        text: text,
+        fileName: file.name,
+        url: window.location.href,
+        title: document.title,
+        projectId
+      });
+      toast("media-toast", `"${file.name}" saved!`, false);
+    } catch (e) {
+      toast("media-toast", e.message || "Failed to save file", true);
+    }
+  };
+
+  reader.onerror = () => {
+    toast("media-toast", "Failed to read file", true);
+  };
+
+  reader.readAsText(file);
 }
 
 // ── Toasts ──

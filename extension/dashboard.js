@@ -9,6 +9,7 @@ let editMode = false;
 let editingClipId = null;
 const PER_PAGE = 20;
 let currentFilter = "all";
+let currentMediaFilter = null;
 
 // Color palette for project dots
 const DOT_COLORS = [
@@ -38,7 +39,16 @@ function bindEvents() {
     chip.addEventListener("click", (e) => {
       document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       e.target.classList.add("active");
-      currentFilter = e.target.dataset.filter;
+      const filter = e.target.dataset.filter;
+      const media = e.target.dataset.media || null;
+
+      if (media) {
+        currentMediaFilter = media;
+        currentFilter = "all"; // don't combine with time filter
+      } else {
+        currentMediaFilter = null;
+        currentFilter = filter;
+      }
       applyFilters();
     });
   });
@@ -252,6 +262,11 @@ function applyFilters() {
     return true;
   });
 
+  // Apply media type filter
+  if (currentMediaFilter) {
+    filteredClips = filteredClips.filter((c) => (c.media_type || "text") === currentMediaFilter);
+  }
+
   // Apply search query
   const q = document.getElementById("search-input").value.toLowerCase().trim();
   if (q) {
@@ -335,6 +350,9 @@ function createClipCard(clip) {
   const fmtDate = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const fmtTime = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
+  const mediaType = clip.media_type || "text";
+  const mediaBadgeLabels = { text: "Text", image: "Image", screenshot: "Screenshot", file: "File" };
+
   let actionsHtml = "";
   if (editMode) {
     actionsHtml = `
@@ -355,16 +373,32 @@ function createClipCard(clip) {
     `;
   }
 
+  // Build preview HTML for screenshot/image clips
+  let previewHtml = "";
+  if (mediaType === "screenshot" && clip.screenshot_data) {
+    previewHtml = `<div class="clip-card-preview"><img src="${esc(clip.screenshot_data)}" alt="Screenshot" loading="lazy" /></div>`;
+  } else if (mediaType === "image" && clip.image_url) {
+    previewHtml = `<div class="clip-card-preview"><a href="${esc(clip.image_url)}" target="_blank"><img src="${esc(clip.image_url)}" alt="${esc(clip.text || 'Image')}" loading="lazy" /></a></div>`;
+  }
+
+  // File name display
+  let fileInfo = "";
+  if (mediaType === "file" && clip.file_name) {
+    fileInfo = `<span style="color:#30d158;">${esc(clip.file_name)}</span>`;
+  }
+
   card.innerHTML = `
     <div class="clip-card-header">
       <div class="clip-card-title">${esc(clip.title || "Untitled Clip")}</div>
+      <span class="media-badge type-${mediaType}">${mediaBadgeLabels[mediaType] || "Text"}</span>
     </div>
     <div class="clip-card-meta">
       <span>${fmtDate} ${fmtTime}</span>
       <span>${esc(clip.domain || "")}</span>
-      <span>${clip.word_count || 0} words</span>
+      ${fileInfo ? fileInfo : `<span>${clip.word_count || 0} words</span>`}
     </div>
-    <div class="clip-card-text" id="text-${clip.id}">${esc(clip.text)}</div>
+    ${previewHtml}
+    ${clip.text ? `<div class="clip-card-text" id="text-${clip.id}">${esc(clip.text)}</div>` : ""}
     <a href="${esc(clip.url)}" target="_blank" class="clip-card-url">${esc(clip.url)}</a>
     <div class="clip-card-actions">${actionsHtml}</div>
   `;
@@ -464,7 +498,7 @@ function copyText(text) {
 
 async function copyAllContext() {
   if (currentProjectId === "all") {
-    // Copy all visible clips
+    // Copy all visible clips as flat format (no bridge for multi-project)
     const text = filteredClips
       .map((c, i) => `--- Clip ${i + 1} ---\nSource: ${c.title} (${c.url})\n\n${c.text}\n`)
       .join("\n");
@@ -473,9 +507,11 @@ async function copyAllContext() {
   }
 
   try {
-    const res = await fetch(`${API}/projects/${currentProjectId}/export`);
+    const compact = document.getElementById("compact-toggle").checked;
+    const res = await fetch(`${API}/projects/${currentProjectId}/bridge?format=markdown&compact=${compact}`);
     const data = await res.json();
-    copyText(data.context || "No clips.");
+    copyText(data.bridge || "No clips.");
+    toast(`Copied to clipboard${compact ? " (compact)" : ""}`, false);
   } catch (e) {
     toast("Failed to export", true);
   }

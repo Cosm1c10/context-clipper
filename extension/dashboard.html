@@ -667,6 +667,58 @@
       to { transform: translateY(0); opacity: 1; }
     }
 
+    /* Media type badge */
+    .media-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .media-badge.type-text {
+      background: var(--accent-subtle);
+      color: var(--accent);
+    }
+
+    .media-badge.type-image {
+      background: rgba(191, 90, 242, 0.12);
+      color: #bf5af2;
+    }
+
+    .media-badge.type-screenshot {
+      background: rgba(255, 159, 10, 0.12);
+      color: #ff9f0a;
+    }
+
+    .media-badge.type-file {
+      background: rgba(48, 209, 88, 0.12);
+      color: #30d158;
+    }
+
+    /* Screenshot/image preview */
+    .clip-card-preview {
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      max-height: 160px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .clip-card-preview img {
+      width: 100%;
+      height: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      display: block;
+    }
+
     /* Edit mode badge */
     .edit-badge {
       padding: 4px 10px;
@@ -786,6 +838,9 @@
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="8" height="8" rx="1.5"/><path d="M2 10V2.5A.5.5 0 012.5 2H10"/></svg>
             Copy All
           </button>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);cursor:pointer;user-select:none;">
+            <input type="checkbox" id="compact-toggle" style="accent-color:var(--accent);cursor:pointer;"> Compact
+          </label>
         </div>
       </div>
 
@@ -816,6 +871,10 @@
           <button class="chip active" data-filter="all">All</button>
           <button class="chip" data-filter="today">Today</button>
           <button class="chip" data-filter="week">Week</button>
+          <button class="chip" data-filter="text" data-media="text">Text</button>
+          <button class="chip" data-filter="images" data-media="image">Images</button>
+          <button class="chip" data-filter="screenshots" data-media="screenshot">Screenshots</button>
+          <button class="chip" data-filter="files" data-media="file">Files</button>
         </div>
       </div>
 

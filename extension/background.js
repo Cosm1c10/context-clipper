@@ -63,6 +63,74 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
+  } else if (request.action === "exportBridge") {
+    fetch(`${API_BASE_URL}/projects/${request.projectId}/bridge?format=${request.format || "yaml"}&compact=${request.compact || false}`)
+      .then(res => res.json())
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === "captureScreenshot") {
+    chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        sendResponse({ success: true, data: dataUrl });
+      }
+    });
+    return true;
+  } else if (request.action === "saveScreenshot") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      chrome.tabs.captureVisibleTab(null, { format: "png" }, async (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        try {
+          const context = {
+            text: `Screenshot of ${tab.title || tab.url}`,
+            url: tab.url,
+            metadata: {
+              title: tab.title || "",
+              timestamp: new Date().toISOString(),
+              domain: new URL(tab.url).hostname,
+              wordCount: 0
+            },
+            media_type: "screenshot",
+            screenshot_data: dataUrl,
+            project_id: request.projectId || null
+          };
+          const response = await fetch(`${API_BASE_URL}/save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(context)
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icons/icon48.png",
+            title: "Context Clipper",
+            message: "Screenshot saved!",
+            priority: 1
+          });
+          sendResponse({ success: true, data });
+        } catch (error) {
+          sendResponse({ success: false, error: error.message });
+        }
+      });
+    });
+    return true;
+  } else if (request.action === "saveImage") {
+    saveImageClip(request.imageUrl, request.altText, request.url, request.title, request.projectId)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === "saveFile") {
+    saveFileClip(request.text, request.fileName, request.url, request.title, request.projectId)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
   } else if (request.action === "proxyFetch") {
     fetch(request.url, request.options || {})
       .then(res => res.json())
@@ -146,18 +214,18 @@ function askAboutSelection(selectedText) {
 }
 
 // Extract LLM-ready context from text
-function extractContext(text, url, title, projectId = null) {
-  const cleanedText = text.trim();
+function extractContext(text, url, title, projectId = null, extras = {}) {
+  const cleanedText = (text || "").trim();
   const timestamp = new Date().toISOString();
 
   const context = {
-    text: cleanedText,
+    text: cleanedText || null,
     url: url,
     metadata: {
       title: title,
       timestamp: timestamp,
       domain: new URL(url).hostname,
-      wordCount: cleanedText.split(/\s+/).length
+      wordCount: cleanedText ? cleanedText.split(/\s+/).length : 0
     }
   };
 
@@ -165,5 +233,63 @@ function extractContext(text, url, title, projectId = null) {
     context.project_id = projectId;
   }
 
+  // Merge extra fields (media_type, image_url, file_name, screenshot_data)
+  Object.assign(context, extras);
+
   return context;
+}
+
+// Save an image clip
+async function saveImageClip(imageUrl, altText, pageUrl, pageTitle, projectId = null) {
+  const context = extractContext(
+    altText || `Image from ${pageTitle || pageUrl}`,
+    pageUrl, pageTitle, projectId,
+    { media_type: "image", image_url: imageUrl }
+  );
+
+  const response = await fetch(`${API_BASE_URL}/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(context)
+  });
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: "icons/icon48.png",
+    title: "Context Clipper",
+    message: "Image saved!",
+    priority: 1
+  });
+
+  return data;
+}
+
+// Save a file clip
+async function saveFileClip(text, fileName, pageUrl, pageTitle, projectId = null) {
+  const context = extractContext(
+    text, pageUrl, pageTitle, projectId,
+    { media_type: "file", file_name: fileName }
+  );
+
+  const response = await fetch(`${API_BASE_URL}/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(context)
+  });
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: "icons/icon48.png",
+    title: "Context Clipper",
+    message: `File "${fileName}" saved!`,
+    priority: 1
+  });
+
+  return data;
 }

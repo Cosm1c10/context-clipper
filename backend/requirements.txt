@@ -3,3 +3,6 @@ uvicorn
 google-generativeai
 supabase
 python-dotenv
+mcp
+httpx
+pyyaml
