@@ -1,4 +1,4 @@
-const API = "http://localhost:8001";
+const API = typeof API_BASE !== "undefined" ? API_BASE : "http://localhost:8001";
 
 let projects = [];
 let allClips = [];

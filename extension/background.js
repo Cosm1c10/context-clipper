@@ -1,4 +1,6 @@
-const API_BASE_URL = "http://localhost:8001";
+// Loaded from config.js via importScripts
+try { importScripts("config.js"); } catch(e) { console.warn("config.js not found, using default"); }
+const API_BASE_URL = typeof API_BASE !== "undefined" ? API_BASE : "http://localhost:8001";
 
 // Create context menu on install
 chrome.runtime.onInstalled.addListener(() => {

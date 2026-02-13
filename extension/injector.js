@@ -3,7 +3,7 @@
  * Save chats + inject context on ChatGPT, Claude, Gemini
  */
 
-const CC_API = "http://localhost:8001";
+const CC_API = typeof API_BASE !== "undefined" ? API_BASE : "http://localhost:8001";
 
 let bridgeUI = null;
 let isExpanded = false;
