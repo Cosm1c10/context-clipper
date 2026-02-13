@@ -1,136 +1,129 @@
-const API_BASE_URL = "http://localhost:8001";
+const API = "http://localhost:8001";
 
-// Check backend status on load
-document.addEventListener('DOMContentLoaded', async () => {
-  await checkBackendStatus();
-  loadStats();
+document.addEventListener("DOMContentLoaded", async () => {
+  await checkBackend();
+  await loadProjects();
 
-  // Event listeners
-  document.getElementById('save-selection').addEventListener('click', saveCurrentSelection);
-  document.getElementById('open-dashboard').addEventListener('click', openDashboard);
-  document.getElementById('ask-btn').addEventListener('click', askQuestion);
-  document.getElementById('question-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') askQuestion();
+  document.getElementById("save-btn").addEventListener("click", saveSelection);
+  document.getElementById("dashboard-btn").addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
   });
 });
 
-async function checkBackendStatus() {
-  const statusEl = document.getElementById('status');
-  const dotEl = statusEl.querySelector('.dot');
-
+async function checkBackend() {
+  const el = document.getElementById("status");
   try {
-    const response = await fetch(`${API_BASE_URL}/save`, { method: 'OPTIONS' });
-    if (response.ok || response.status === 405) {
-      statusEl.innerHTML = '<div class="dot"></div><span>Backend connected</span>';
-      statusEl.classList.remove('offline');
+    const res = await fetch(`${API}/projects`, { method: "GET" });
+    if (res.ok) {
+      el.innerHTML = '<div class="status-dot"></div><span>Backend connected</span>';
+      el.classList.remove("offline");
     } else {
-      throw new Error('Backend not responding');
+      throw new Error();
     }
-  } catch (error) {
-    statusEl.innerHTML = '<div class="dot offline"></div><span>Backend offline</span>';
-    statusEl.classList.add('offline');
+  } catch {
+    el.innerHTML = '<div class="status-dot"></div><span>Backend offline</span>';
+    el.classList.add("offline");
   }
 }
 
-async function loadStats() {
+async function loadProjects() {
+  const select = document.getElementById("project-select");
   try {
-    const clipCount = await chrome.storage.local.get(['clipCount']);
-    const queryCount = await chrome.storage.local.get(['queryCount']);
-
-    document.getElementById('clip-count').textContent = clipCount.clipCount || 0;
-    document.getElementById('query-count').textContent = queryCount.queryCount || 0;
-  } catch (error) {
-    console.error('Error loading stats:', error);
+    const res = await fetch(`${API}/projects`);
+    const projects = await res.json();
+    select.innerHTML = '<option value="">No project (unsorted)</option>';
+    projects.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.name} (${p.clip_count || 0} clips)`;
+      select.appendChild(opt);
+    });
+  } catch {
+    // Backend offline
   }
 }
 
-async function saveCurrentSelection() {
+async function saveSelection() {
+  const btn = document.getElementById("save-btn");
+  const projectId = document.getElementById("project-select").value || null;
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    const result = await chrome.tabs.sendMessage(tab.id, { action: 'getSelection' });
-
-    if (result && result.text && result.text.trim()) {
-      chrome.runtime.sendMessage({
-        action: 'saveClip',
-        text: result.text,
-        url: tab.url,
-        title: tab.title
-      }, async (response) => {
-        if (response && response.success) {
-          // Increment clip count
-          const { clipCount } = await chrome.storage.local.get(['clipCount']);
-          await chrome.storage.local.set({ clipCount: (clipCount || 0) + 1 });
-          loadStats();
-
-          showMessage('✓ Saved successfully!', 'success');
-        } else {
-          showMessage('✗ Failed to save', 'error');
-        }
-      });
-    } else {
-      showMessage('⚠️ No text selected', 'warning');
+    if (!tab || !tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
+      showMessage("Cannot save from this page", "warning");
+      return;
     }
-  } catch (error) {
-    console.error('Error:', error);
-    showMessage('✗ Error: ' + error.message, 'error');
-  }
-}
 
-function openDashboard() {
-  chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
-}
-
-async function askQuestion() {
-  const input = document.getElementById('question-input');
-  const question = input.value.trim();
-
-  if (!question) {
-    showMessage('⚠️ Please enter a question', 'warning');
-    return;
-  }
-
-  const loadingEl = document.getElementById('loading');
-  const answerEl = document.getElementById('answer-section');
-
-  loadingEl.style.display = 'block';
-  answerEl.style.display = 'none';
-
-  try {
-    chrome.runtime.sendMessage({
-      action: 'askQuestion',
-      question: question
-    }, async (response) => {
-      loadingEl.style.display = 'none';
-
-      if (response && response.success) {
-        answerEl.innerHTML = `<strong>Q:</strong> ${question}<br><br><strong>A:</strong> ${response.data.answer}`;
-        answerEl.style.display = 'block';
-
-        // Increment query count
-        const { queryCount } = await chrome.storage.local.get(['queryCount']);
-        await chrome.storage.local.set({ queryCount: (queryCount || 0) + 1 });
-        loadStats();
-
-        input.value = '';
-      } else {
-        showMessage('✗ Failed to get answer', 'error');
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
+    } catch {
+      // Content script not loaded — try injecting it first
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["content.js"]
+        });
+        result = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
+      } catch {
+        showMessage("Select text on a webpage first", "warning");
+        return;
       }
+    }
+
+    if (!result || !result.text || !result.text.trim()) {
+      showMessage("No text selected on page", "warning");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          action: "saveClip",
+          text: result.text,
+          url: tab.url,
+          title: tab.title,
+          projectId: projectId,
+        },
+        (resp) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (resp && resp.success) {
+            resolve(resp);
+          } else {
+            reject(new Error(resp?.error || "Save failed"));
+          }
+        }
+      );
     });
-  } catch (error) {
-    loadingEl.style.display = 'none';
-    showMessage('✗ Error: ' + error.message, 'error');
+
+    showMessage("Saved successfully!", "success");
+
+    const { clipCount } = await chrome.storage.local.get(["clipCount"]);
+    await chrome.storage.local.set({ clipCount: (clipCount || 0) + 1 });
+
+    await loadProjects();
+  } catch (e) {
+    showMessage(e.message || "Failed to save", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/>
+        <polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save Selection`;
   }
 }
 
-function showMessage(message, type) {
-  const answerEl = document.getElementById('answer-section');
-  answerEl.innerHTML = message;
-  answerEl.style.display = 'block';
-  answerEl.style.background = type === 'error' ? '#ffebee' : type === 'success' ? '#e8f5e9' : '#fff3e0';
-  answerEl.style.color = type === 'error' ? '#c62828' : type === 'success' ? '#2e7d32' : '#e65100';
-
-  setTimeout(() => {
-    answerEl.style.display = 'none';
-  }, 3000);
+function showMessage(text, type) {
+  const el = document.getElementById("message");
+  el.textContent = text;
+  el.className = `message ${type}`;
+  setTimeout(() => { el.className = "message"; }, 3000);
 }

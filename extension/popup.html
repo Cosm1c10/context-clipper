@@ -5,273 +5,329 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Context Clipper</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --surface-hover: #2c2c2e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.14);
+      --text-primary: #f5f5f7;
+      --text-secondary: #86868b;
+      --text-tertiary: #48484a;
+      --accent: #0a84ff;
+      --accent-hover: #409cff;
+      --accent-subtle: rgba(10, 132, 255, 0.12);
+      --success: #30d158;
+      --success-subtle: rgba(48, 209, 88, 0.12);
+      --danger: #ff453a;
+      --danger-subtle: rgba(255, 69, 58, 0.12);
+      --warning: #ffd60a;
+      --warning-subtle: rgba(255, 214, 10, 0.12);
     }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      width: 350px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #333;
+      width: 340px;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
     }
 
-    .container {
+    .popup {
       padding: 20px;
     }
 
+    /* Header */
     .header {
-      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 12px;
       margin-bottom: 20px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .logo-icon svg {
+      width: 20px;
+      height: 20px;
       color: white;
     }
 
-    .header h1 {
-      font-size: 24px;
-      margin-bottom: 5px;
+    .header-text h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
     }
 
-    .header p {
-      font-size: 12px;
-      opacity: 0.9;
+    .header-text p {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-top: 1px;
     }
 
-    .card {
-      background: white;
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-
-    .quick-actions {
+    /* Status */
+    .status-bar {
       display: flex;
-      flex-direction: column;
-      gap: 10px;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      background: var(--success-subtle);
+      color: var(--success);
+      border: 1px solid rgba(48, 209, 88, 0.08);
     }
 
-    button {
+    .status-bar.offline {
+      background: var(--danger-subtle);
+      color: var(--danger);
+      border-color: rgba(255, 69, 58, 0.08);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .status-bar.offline .status-dot {
+      background: var(--danger);
+      animation: none;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    /* Project selector */
+    .select-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .project-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2386868b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .project-select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-subtle);
+    }
+
+    .project-select option {
+      background: var(--surface);
+      color: var(--text-primary);
+    }
+
+    /* Save button */
+    .save-btn {
+      width: 100%;
       padding: 12px;
       border: none;
-      border-radius: 8px;
-      cursor: pointer;
+      border-radius: 12px;
       font-size: 14px;
       font-weight: 600;
-      transition: all 0.2s;
+      cursor: pointer;
+      background: var(--accent);
+      color: white;
+      transition: all 0.2s ease;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      margin-bottom: 10px;
+      font-family: inherit;
+      letter-spacing: -0.1px;
     }
 
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    .save-btn:hover {
+      background: var(--accent-hover);
+      transform: scale(1.01);
     }
 
-    .btn-primary {
-      background: #4CAF50;
-      color: white;
+    .save-btn:active {
+      transform: scale(0.98);
     }
 
-    .btn-primary:hover {
-      background: #45a049;
-    }
-
-    .btn-secondary {
-      background: #2196F3;
-      color: white;
-    }
-
-    .btn-secondary:hover {
-      background: #0b7dda;
-    }
-
-    .btn-dashboard {
-      background: #FF9800;
-      color: white;
-    }
-
-    .btn-dashboard:hover {
-      background: #e68900;
-    }
-
-    .chat-section {
-      margin-top: 12px;
-    }
-
-    .chat-input {
+    /* Dashboard link */
+    .dashboard-btn {
       width: 100%;
       padding: 10px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       font-size: 13px;
-      margin-bottom: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text-primary);
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       font-family: inherit;
     }
 
-    .chat-input:focus {
-      outline: none;
-      border-color: #2196F3;
+    .dashboard-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-hover);
     }
 
-    .stats {
-      display: flex;
-      justify-content: space-around;
-      padding: 12px 0;
-    }
-
-    .stat {
+    /* Shortcut hint */
+    .shortcut-hint {
       text-align: center;
-    }
-
-    .stat-value {
-      font-size: 24px;
-      font-weight: bold;
-      color: #667eea;
-    }
-
-    .stat-label {
       font-size: 11px;
-      color: #666;
-      text-transform: uppercase;
-      margin-top: 4px;
+      color: var(--text-tertiary);
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
     }
 
-    .shortcuts {
-      font-size: 11px;
-      color: #666;
-      line-height: 1.6;
+    .shortcut-hint kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-secondary);
     }
 
-    .shortcuts strong {
-      color: #333;
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: #e8f5e9;
-      border-radius: 6px;
+    /* Message */
+    .message {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 10px;
       font-size: 12px;
-      color: #2e7d32;
+      font-weight: 600;
+      text-align: center;
       margin-bottom: 12px;
     }
 
-    .status.offline {
-      background: #ffebee;
-      color: #c62828;
+    .message.success {
+      display: block;
+      background: var(--success-subtle);
+      color: var(--success);
+      border: 1px solid rgba(48, 209, 88, 0.08);
     }
 
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #4CAF50;
+    .message.error {
+      display: block;
+      background: var(--danger-subtle);
+      color: var(--danger);
+      border: 1px solid rgba(255, 69, 58, 0.08);
     }
 
-    .dot.offline {
-      background: #f44336;
-    }
-
-    #answer-section {
-      display: none;
-      margin-top: 12px;
-      padding: 12px;
-      background: #f5f5f5;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.6;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .loading {
-      display: none;
-      text-align: center;
-      padding: 20px;
-      color: #666;
-    }
-
-    .spinner {
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #667eea;
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 10px;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    .message.warning {
+      display: block;
+      background: var(--warning-subtle);
+      color: #b89a00;
+      border: 1px solid rgba(255, 214, 10, 0.08);
     }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="popup">
     <div class="header">
-      <h1>📋 Context Clipper</h1>
-      <p>Your AI-powered clipboard</p>
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>Context Clipper</h1>
+        <p>Clip, organize, inject into LLMs</p>
+      </div>
     </div>
 
-    <div id="status" class="status">
-      <div class="dot"></div>
+    <div class="status-bar" id="status">
+      <div class="status-dot"></div>
       <span>Backend connected</span>
     </div>
 
     <div class="card">
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-value" id="clip-count">0</div>
-          <div class="stat-label">Clips Saved</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value" id="query-count">0</div>
-          <div class="stat-label">AI Queries</div>
-        </div>
-      </div>
+      <div class="select-label">Target Project</div>
+      <select class="project-select" id="project-select">
+        <option value="">No project (unsorted)</option>
+      </select>
     </div>
 
-    <div class="card quick-actions">
-      <button class="btn-primary" id="save-selection">
-        💾 Save Current Selection
-      </button>
-      <button class="btn-dashboard" id="open-dashboard">
-        📊 Open Dashboard
-      </button>
-    </div>
+    <div id="message" class="message"></div>
 
-    <div class="card">
-      <div class="chat-section">
-        <input
-          type="text"
-          class="chat-input"
-          id="question-input"
-          placeholder="Ask AI anything about your clips..."
-        >
-        <button class="btn-secondary" id="ask-btn">
-          🤔 Ask AI
-        </button>
-      </div>
+    <button class="save-btn" id="save-btn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/>
+        <polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save Selection
+    </button>
 
-      <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <div>Thinking...</div>
-      </div>
+    <button class="dashboard-btn" id="dashboard-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      Open Dashboard
+    </button>
 
-      <div id="answer-section"></div>
-    </div>
-
-    <div class="card shortcuts">
-      <strong>⌨️ Keyboard Shortcuts:</strong><br>
-      <strong>Ctrl+Shift+S</strong> - Save selection<br>
-      <strong>Ctrl+Shift+D</strong> - Open dashboard
+    <div class="shortcut-hint">
+      <kbd>Alt+S</kbd> Save selection &nbsp;&middot;&nbsp; <kbd>Alt+C</kbd> Open dashboard
     </div>
   </div>
 

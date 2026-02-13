@@ -1,13 +1,13 @@
 import os
+import uuid
+from datetime import datetime
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
-import vecs
+from supabase import create_client
 from dotenv import load_dotenv
-import psycopg2
-from psycopg2.extras import RealDictCursor
-
 from pathlib import Path
 
 # Load .env from the same directory as this file
@@ -16,18 +16,21 @@ load_dotenv(dotenv_path=env_path)
 
 # Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DB_CONNECTION = os.getenv("DB_CONNECTION")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not GEMINI_API_KEY:
     print("Warning: GEMINI_API_KEY not found in .env")
-if not DB_CONNECTION:
-    print("Warning: DB_CONNECTION not found in .env")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("Warning: SUPABASE_URL or SUPABASE_KEY not found in .env")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
+# Initialize Supabase client
+sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,57 +39,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database table for clips metadata
-def init_db():
-    if not DB_CONNECTION:
-        return
-    try:
-        conn = psycopg2.connect(DB_CONNECTION)
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS clips (
-                id VARCHAR(255) PRIMARY KEY,
-                text TEXT NOT NULL,
-                url TEXT NOT NULL,
-                title TEXT,
-                domain TEXT,
-                word_count INTEGER,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"Error initializing database: {e}")
+# --- Models ---
 
-init_db()
-
-# Initialize Vector Store
-def get_collection():
-    if not DB_CONNECTION:
-        raise HTTPException(status_code=500, detail="DB_CONNECTION not configured")
-    vx = vecs.create_client(DB_CONNECTION)
-    # Create a collection for clips with 768 dimensions (text-embedding-004)
-    return vx.get_or_create_collection(name="gemini_clips", dimension=768)
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
 
 class SaveRequest(BaseModel):
     text: str
     url: str
-    metadata: dict = None
+    metadata: Optional[dict] = None
+    project_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     question: str
 
+# --- Clips ---
+
 @app.post("/save")
 async def save_clip(request: SaveRequest):
     try:
-        import uuid
-        from datetime import datetime
-
         # Generate embedding
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=request.text,
             task_type="retrieval_document",
             title="Context Clip"
@@ -94,69 +69,51 @@ async def save_clip(request: SaveRequest):
         embedding = result['embedding']
 
         record_id = str(uuid.uuid4())
-
-        # Save to vector store
-        clips = get_collection()
-        clips.upsert(
-            records=[
-                (
-                    record_id,
-                    embedding,
-                    {"text": request.text, "url": request.url}
-                )
-            ]
-        )
-
-        # Save metadata to PostgreSQL table
-        conn = psycopg2.connect(DB_CONNECTION)
-        cur = conn.cursor()
-
         metadata = request.metadata or {}
         title = metadata.get('title', '')
         domain = metadata.get('domain', '')
         word_count = metadata.get('wordCount', len(request.text.split()))
 
-        cur.execute("""
-            INSERT INTO clips (id, text, url, title, domain, word_count, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (record_id, request.text, request.url, title, domain, word_count, datetime.now()))
+        row = {
+            "id": record_id,
+            "text": request.text,
+            "url": request.url,
+            "title": title,
+            "domain": domain,
+            "word_count": word_count,
+            "timestamp": datetime.now().isoformat(),
+            "project_id": request.project_id,
+            "embedding": embedding,
+        }
 
-        conn.commit()
-        cur.close()
-        conn.close()
+        sb.table("clips").insert(row).execute()
 
         return {"status": "success", "id": record_id}
     except Exception as e:
         print(f"Error saving clip: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/clips")
+async def save_clip_alt(request: SaveRequest):
+    return await save_clip(request)
+
 @app.get("/clips")
-async def get_clips(limit: int = 50, offset: int = 0):
-    """Get all saved clips with pagination"""
+async def get_clips(limit: int = 50, offset: int = 0, project_id: str = None):
     try:
-        conn = psycopg2.connect(DB_CONNECTION)
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = sb.table("clips").select("id, text, url, title, domain, word_count, timestamp, project_id")
+
+        if project_id:
+            query = query.eq("project_id", project_id)
+
+        result = query.order("timestamp", desc=True).range(offset, offset + limit - 1).execute()
+        clips = result.data
 
         # Get total count
-        cur.execute("SELECT COUNT(*) as total FROM clips")
-        total = cur.fetchone()['total']
-
-        # Get clips with pagination
-        cur.execute("""
-            SELECT id, text, url, title, domain, word_count, timestamp
-            FROM clips
-            ORDER BY timestamp DESC
-            LIMIT %s OFFSET %s
-        """, (limit, offset))
-
-        clips = cur.fetchall()
-        cur.close()
-        conn.close()
-
-        # Convert datetime to string for JSON serialization
-        for clip in clips:
-            if clip['timestamp']:
-                clip['timestamp'] = clip['timestamp'].isoformat()
+        count_query = sb.table("clips").select("id", count="exact")
+        if project_id:
+            count_query = count_query.eq("project_id", project_id)
+        count_result = count_query.execute()
+        total = count_result.count if count_result.count is not None else len(clips)
 
         return {
             "clips": clips,
@@ -168,53 +125,143 @@ async def get_clips(limit: int = 50, offset: int = 0):
         print(f"Error getting clips: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/clips/{clip_id}")
+async def delete_clip(clip_id: str):
+    try:
+        result = sb.table("clips").delete().eq("id", clip_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Clip not found")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/clips/{clip_id}")
+async def update_clip(clip_id: str, request: SaveRequest):
+    try:
+        word_count = len(request.text.split())
+
+        # Re-generate embedding
+        emb_result = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=request.text,
+            task_type="retrieval_document",
+            title="Context Clip"
+        )
+
+        result = sb.table("clips").update({
+            "text": request.text,
+            "word_count": word_count,
+            "embedding": emb_result['embedding'],
+        }).eq("id", clip_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Clip not found")
+        return {"status": "updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Chat (Semantic Search + AI) ---
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        # Embed question
+        # Embed the question
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=request.question,
             task_type="retrieval_query"
         )
         question_embedding = result['embedding']
 
-        # Query Supabase
-        clips = get_collection()
-        results = clips.query(
-            data=question_embedding,
-            limit=5,
-            include_metadata=True
-        )
+        # Vector similarity search via Supabase RPC
+        rpc_result = sb.rpc("match_clips", {
+            "query_embedding": question_embedding,
+            "match_count": 5
+        }).execute()
 
-        # Construct context
         context = ""
-        for result_item in results:
-            # vecs returns tuples of (id, distance, metadata) when include_metadata=True
-            if len(result_item) >= 3:
-                record_id, distance, meta = result_item[0], result_item[1], result_item[2]
-            else:
-                # Fallback: try to get metadata from the record
-                meta = result_item[2] if len(result_item) > 2 else {}
-
-            # If meta is the dict containing text and url
-            if isinstance(meta, dict):
-                text = meta.get('text', '')
-                url = meta.get('url', '')
-                context += f"Source ({url}): {text}\n\n"
+        for row in (rpc_result.data or []):
+            text = row.get("text", "")
+            url = row.get("url", "")
+            context += f"Source ({url}): {text}\n\n"
 
         if not context:
             return {"answer": "No relevant context found to answer your question."}
 
-        # Generate answer
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {request.question}"
-        
         response = model.generate_content(prompt)
         return {"answer": response.text}
 
     except Exception as e:
         print(f"Error in chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Projects ---
+
+@app.post("/projects")
+async def create_project(project: ProjectCreate):
+    try:
+        project_id = str(uuid.uuid4())
+        sb.table("projects").insert({
+            "id": project_id,
+            "name": project.name,
+            "description": project.description,
+        }).execute()
+        return {"id": project_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects")
+async def list_projects():
+    try:
+        result = sb.table("projects").select("*").order("created_at", desc=True).execute()
+        projects = result.data
+
+        # Get clip counts per project
+        for p in projects:
+            count_result = sb.table("clips").select("id", count="exact").eq("project_id", p["id"]).execute()
+            p["clip_count"] = count_result.count if count_result.count is not None else 0
+
+        return projects
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    try:
+        result = sb.table("projects").delete().eq("id", project_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects/{project_id}/export")
+async def export_project_context(project_id: str):
+    try:
+        result = sb.table("clips").select("text, url, title, timestamp").eq("project_id", project_id).order("timestamp").execute()
+        clips = result.data
+
+        if not clips:
+            return {"context": "No clips in this project."}
+
+        context_parts = []
+        for i, clip in enumerate(clips, 1):
+            date_str = clip.get('timestamp', 'Unknown Date')
+            part = f"--- Clip {i} ---\nSource: {clip.get('title', '')} ({clip.get('url', '')})\nDate: {date_str}\n\n{clip['text']}\n"
+            context_parts.append(part)
+
+        full_context = "\n".join(context_parts)
+        return {"context": full_context, "clip_count": len(clips)}
+    except Exception as e:
+        print(f"Error exporting project: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

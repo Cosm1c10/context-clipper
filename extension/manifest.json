@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Context Clipper",
-  "version": "1.0",
-  "description": "Save context to Gemini and chat with it.",
+  "name": "Context Bridge",
+  "version": "2.0",
+  "description": "Save context from the web and inject it into ChatGPT, Claude, and Gemini.",
   "permissions": [
     "contextMenus",
     "activeTab",
     "storage",
-    "notifications"
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
     "http://localhost:8001/*"
@@ -26,23 +27,38 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
       "js": ["content.js"]
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": ["injector.js"]
     }
   ],
   "commands": {
     "save-clip": {
       "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
+        "default": "Alt+S",
+        "mac": "Alt+S"
       },
-      "description": "Save selected text to Context Clipper"
+      "description": "Save selected text to Context Bridge"
     },
     "open-dashboard": {
       "suggested_key": {
         "default": "Alt+C",
         "mac": "Alt+C"
       },
-      "description": "Open Context Clipper Dashboard"
+      "description": "Open Context Bridge Dashboard"
     }
   },
   "icons": {

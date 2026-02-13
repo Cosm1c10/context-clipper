@@ -3,8 +3,8 @@ const API_BASE_URL = "http://localhost:8001";
 // Create context menu on install
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "save-to-context-clipper",
-    title: "Save to Context Clipper",
+    id: "save-to-context-bridge",
+    title: "Save to Context Bridge",
     contexts: ["selection"]
   });
 
@@ -17,7 +17,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "save-to-context-clipper" && info.selectionText) {
+  if (info.menuItemId === "save-to-context-bridge" && info.selectionText) {
     saveClip(info.selectionText, tab.url, tab.title);
   } else if (info.menuItemId === "ask-about-selection" && info.selectionText) {
     askAboutSelection(info.selectionText);
@@ -42,12 +42,30 @@ chrome.commands.onCommand.addListener((command) => {
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "saveClip") {
-    saveClip(request.text, request.url, request.title)
+    saveClip(request.text, request.url, request.title, request.projectId)
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Keep channel open for async response
+    return true;
   } else if (request.action === "askQuestion") {
     askQuestion(request.question)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === "getProjects") {
+    fetch(`${API_BASE_URL}/projects`)
+      .then(res => res.json())
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === "exportProject") {
+    fetch(`${API_BASE_URL}/projects/${request.projectId}/export`)
+      .then(res => res.json())
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === "proxyFetch") {
+    fetch(request.url)
+      .then(res => res.json())
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -55,16 +73,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Save clip to backend
-async function saveClip(text, url, title = "") {
+async function saveClip(text, url, title = "", projectId = null) {
   try {
-    // Extract LLM-ready context
-    const context = extractContext(text, url, title);
+    const context = extractContext(text, url, title, projectId);
 
     const response = await fetch(`${API_BASE_URL}/save`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(context)
     });
 
@@ -74,23 +89,21 @@ async function saveClip(text, url, title = "") {
 
     const data = await response.json();
 
-    // Show success notification
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "Context Clipper",
-      message: "Successfully saved clip!",
+      title: "Context Bridge",
+      message: "Clip saved successfully!",
       priority: 1
     });
 
-    console.log("Success:", data);
     return data;
   } catch (error) {
     console.error("Error:", error);
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "Context Clipper Error",
+      title: "Context Bridge Error",
       message: `Failed to save: ${error.message}`,
       priority: 2
     });
@@ -103,9 +116,7 @@ async function askQuestion(question) {
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question })
     });
 
@@ -113,8 +124,7 @@ async function askQuestion(question) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
     console.error("Error:", error);
     throw error;
@@ -125,23 +135,22 @@ async function askQuestion(question) {
 function askAboutSelection(selectedText) {
   const question = `What can you tell me about: "${selectedText}"?`;
   askQuestion(question).then(data => {
-    // Open popup or new tab with answer
-    chrome.tabs.create({
-      url: chrome.runtime.getURL(`answer.html?q=${encodeURIComponent(selectedText)}&a=${encodeURIComponent(data.answer)}`)
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon48.png",
+      title: "Context Bridge - AI Answer",
+      message: data.answer ? data.answer.substring(0, 200) : "No answer found.",
+      priority: 1
     });
   });
 }
 
 // Extract LLM-ready context from text
-function extractContext(text, url, title) {
-  // Clean up text
-  let cleanedText = text.trim();
-
-  // Add metadata for better context
+function extractContext(text, url, title, projectId = null) {
+  const cleanedText = text.trim();
   const timestamp = new Date().toISOString();
 
-  // Create LLM-ready format with metadata
-  const llmContext = {
+  const context = {
     text: cleanedText,
     url: url,
     metadata: {
@@ -152,5 +161,9 @@ function extractContext(text, url, title) {
     }
   };
 
-  return llmContext;
+  if (projectId) {
+    context.project_id = projectId;
+  }
+
+  return context;
 }
