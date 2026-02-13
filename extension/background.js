@@ -64,7 +64,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   } else if (request.action === "proxyFetch") {
-    fetch(request.url)
+    fetch(request.url, request.options || {})
       .then(res => res.json())
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
