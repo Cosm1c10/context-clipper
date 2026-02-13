@@ -13,6 +13,7 @@
   ],
   "host_permissions": [
     "http://localhost:8001/*",
+    "https://*.vercel.app/*",
     "https://*.onrender.com/*",
     "https://*/*",
     "http://*/*"

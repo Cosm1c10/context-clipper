@@ -528,7 +528,7 @@ def bridge_to_markdown(bridge):
 @app.get("/projects/{project_id}/bridge")
 async def get_project_bridge(
     project_id: str,
-    format: str = Query("yaml", regex="^(yaml|json|markdown)$"),
+    format: str = Query("yaml", pattern="^(yaml|json|markdown)$"),
     compact: bool = Query(False),
     x_gemini_key: Optional[str] = Header(None),
 ):

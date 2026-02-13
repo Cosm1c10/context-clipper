@@ -1,3 +1,3 @@
-// Change this to your Render URL after deploying (e.g. "https://context-clipper-api.onrender.com")
+// After deploying to Vercel, replace with your URL (e.g. "https://context-clipper.vercel.app")
 // Use "http://localhost:8001" for local development
 const API_BASE = "http://localhost:8001";
