@@ -1,8 +1,26 @@
-// Listen for messages from background script
+// Cache selection so it survives focus loss when popup opens
+let lastSelection = "";
+
+document.addEventListener("mouseup", () => {
+  const text = window.getSelection().toString().trim();
+  if (text.length > 0) {
+    lastSelection = text;
+  }
+});
+
+document.addEventListener("keyup", () => {
+  const text = window.getSelection().toString().trim();
+  if (text.length > 0) {
+    lastSelection = text;
+  }
+});
+
+// Listen for messages from background script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getSelection") {
-    const selectedText = window.getSelection().toString();
-    sendResponse({ text: selectedText });
+    // Try live selection first, fall back to cached
+    const liveText = window.getSelection().toString().trim();
+    sendResponse({ text: liveText || lastSelection });
   }
 });
 
