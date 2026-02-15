@@ -38,9 +38,16 @@ document.addEventListener("mouseup", (e) => {
     showButtonTimeout = null;
   }
 
+  // Check if click target is or is near an <img>
+  const imgEl = e.target.closest("img") || (e.target.tagName === "IMG" ? e.target : null);
+
   if (selectedText && selectedText.length >= MIN_TEXT_LENGTH) {
     showButtonTimeout = setTimeout(() => {
-      showFloatingButton(e.pageX, e.pageY, selectedText);
+      showFloatingButton(e.pageX, e.pageY, selectedText, imgEl);
+    }, SHOW_DELAY);
+  } else if (imgEl && imgEl.src) {
+    showButtonTimeout = setTimeout(() => {
+      showImageButton(e.pageX, e.pageY, imgEl);
     }, SHOW_DELAY);
   } else {
     hideFloatingButton();
@@ -67,11 +74,24 @@ document.addEventListener("selectionchange", () => {
   }
 });
 
-function showFloatingButton(x, y, text) {
+function showFloatingButton(x, y, text, imgEl = null) {
   hideFloatingButton();
 
   floatingButton = document.createElement("div");
   floatingButton.id = "context-bridge-float";
+
+  let imgBtnHtml = "";
+  if (imgEl && imgEl.src) {
+    imgBtnHtml = `
+    <button class="cb-float-img" title="Save Image">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      Save Image
+    </button>`;
+  }
 
   floatingButton.innerHTML = `
     <button class="cb-float-save" title="Save to Context Clipper (Alt+S)">
@@ -90,6 +110,7 @@ function showFloatingButton(x, y, text) {
       </svg>
       Ask AI
     </button>
+    ${imgBtnHtml}
   `;
 
   floatingButton.style.cssText = `
@@ -165,6 +186,103 @@ function showFloatingButton(x, y, text) {
         }
       });
     }
+    hideFloatingButton();
+  });
+
+  // Image save button (if present)
+  const imgBtn = floatingButton.querySelector(".cb-float-img");
+  if (imgBtn && imgEl) {
+    imgBtn.style.cssText = btnBase + "background: rgba(255,255,255,0.08);";
+    imgBtn.addEventListener("mouseover", () => { imgBtn.style.background = "rgba(255,255,255,0.14)"; });
+    imgBtn.addEventListener("mouseout", () => { imgBtn.style.background = "rgba(255,255,255,0.08)"; });
+    imgBtn.addEventListener("click", () => {
+      chrome.runtime.sendMessage({
+        action: "saveImage",
+        imageUrl: imgEl.src,
+        altText: imgEl.alt || imgEl.title || "",
+        url: window.location.href,
+        title: document.title
+      }, (response) => {
+        if (response && response.success) {
+          showToast("Image saved to Context Clipper");
+        } else {
+          showToast("Failed to save image", true);
+        }
+      });
+      hideFloatingButton();
+    });
+  }
+
+  document.body.appendChild(floatingButton);
+}
+
+function showImageButton(x, y, imgEl) {
+  hideFloatingButton();
+
+  floatingButton = document.createElement("div");
+  floatingButton.id = "context-bridge-float";
+
+  floatingButton.innerHTML = `
+    <button class="cb-float-img" title="Save Image to Context Clipper">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      Save Image
+    </button>
+  `;
+
+  floatingButton.style.cssText = `
+    position: absolute;
+    left: ${x}px;
+    top: ${y + 14}px;
+    z-index: 999999;
+    background: #1c1c1e;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(255,255,255,0.06);
+    display: flex;
+    gap: 3px;
+    animation: cbFadeIn 0.15s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  `;
+
+  const imgBtn = floatingButton.querySelector(".cb-float-img");
+  imgBtn.style.cssText = `
+    padding: 7px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.12s ease;
+    color: white;
+    font-family: inherit;
+    letter-spacing: -0.1px;
+    background: #0a84ff;
+  `;
+
+  imgBtn.addEventListener("mouseover", () => { imgBtn.style.background = "#409cff"; });
+  imgBtn.addEventListener("mouseout", () => { imgBtn.style.background = "#0a84ff"; });
+  imgBtn.addEventListener("click", () => {
+    chrome.runtime.sendMessage({
+      action: "saveImage",
+      imageUrl: imgEl.src,
+      altText: imgEl.alt || imgEl.title || "",
+      url: window.location.href,
+      title: document.title
+    }, (response) => {
+      if (response && response.success) {
+        showToast("Image saved to Context Clipper");
+      } else {
+        showToast("Failed to save image", true);
+      }
+    });
     hideFloatingButton();
   });
 

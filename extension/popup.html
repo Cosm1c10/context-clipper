@@ -41,6 +41,8 @@
       padding: 20px;
     }
 
+    .hidden { display: none !important; }
+
     /* Header */
     .header {
       display: flex;
@@ -128,6 +130,39 @@
       margin-bottom: 14px;
     }
 
+    /* Form elements */
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-subtle);
+    }
+
+    .form-input::placeholder {
+      color: var(--text-tertiary);
+    }
+
     /* Project selector */
     .select-label {
       font-size: 11px;
@@ -169,8 +204,8 @@
       color: var(--text-primary);
     }
 
-    /* Save button */
-    .save-btn {
+    /* Buttons */
+    .btn {
       width: 100%;
       padding: 12px;
       border: none;
@@ -178,8 +213,6 @@
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      background: var(--accent);
-      color: white;
       transition: all 0.2s ease;
       display: flex;
       align-items: center;
@@ -190,37 +223,155 @@
       letter-spacing: -0.1px;
     }
 
-    .save-btn:hover {
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
       background: var(--accent-hover);
       transform: scale(1.01);
     }
 
-    .save-btn:active {
+    .btn-primary:active {
       transform: scale(0.98);
     }
 
-    /* Dashboard link */
-    .dashboard-btn {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
+    .btn-ghost {
       background: var(--surface);
       color: var(--text-primary);
-      transition: all 0.15s ease;
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-hover);
+    }
+
+    .btn-danger {
+      background: var(--danger-subtle);
+      color: var(--danger);
+      border: 1px solid rgba(255, 69, 58, 0.08);
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 69, 58, 0.2);
+    }
+
+    .btn-sm {
+      padding: 8px 12px;
+      font-size: 12px;
+      border-radius: 8px;
+      width: auto;
+      margin-bottom: 0;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Auth form */
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .auth-form .form-input {
+      margin-bottom: 0;
+    }
+
+    .auth-toggle {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    .auth-toggle a {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .auth-toggle a:hover {
+      text-decoration: underline;
+    }
+
+    /* Settings */
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .settings-row .user-email {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
+    .key-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .key-status.has-key {
+      background: var(--success-subtle);
+      color: var(--success);
+    }
+
+    .key-status.no-key {
+      background: var(--warning-subtle);
+      color: #b89a00;
+    }
+
+    /* Top bar with settings icon */
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .top-actions .status-bar {
+      margin-bottom: 0;
+      flex: 1;
+    }
+
+    .settings-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      font-family: inherit;
+      margin-left: 8px;
+      transition: all 0.15s;
+      flex-shrink: 0;
     }
 
-    .dashboard-btn:hover {
+    .settings-btn:hover {
       background: var(--surface-hover);
-      border-color: var(--border-hover);
+      color: var(--text-primary);
     }
 
     /* Shortcut hint */
@@ -280,6 +431,7 @@
 </head>
 <body>
   <div class="popup">
+    <!-- Header (always visible) -->
     <div class="header">
       <div class="logo-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -293,44 +445,125 @@
       </div>
     </div>
 
-    <div class="status-bar" id="status">
-      <div class="status-dot"></div>
-      <span>Backend connected</span>
+    <!-- ========== LOGIN VIEW ========== -->
+    <div id="view-login" class="hidden">
+      <div class="card">
+        <div class="form-label" id="auth-title">Sign In</div>
+        <div class="auth-form">
+          <input class="form-input" id="auth-email" type="email" placeholder="Email address" autocomplete="email">
+          <input class="form-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
+          <div id="auth-message" class="message"></div>
+          <button class="btn btn-primary" id="auth-submit-btn">Sign In</button>
+        </div>
+        <div class="auth-toggle">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <a id="auth-toggle-link">Sign Up</a>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="select-label">Target Project</div>
-      <select class="project-select" id="project-select">
-        <option value="">No project (unsorted)</option>
-      </select>
+    <!-- ========== MAIN VIEW ========== -->
+    <div id="view-main" class="hidden">
+      <div class="top-actions">
+        <div class="status-bar" id="status">
+          <div class="status-dot"></div>
+          <span>Connecting...</span>
+        </div>
+        <button class="settings-btn" id="settings-btn" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="select-label">Target Project</div>
+        <select class="project-select" id="project-select">
+          <option value="">No project (unsorted)</option>
+        </select>
+      </div>
+
+      <div id="message" class="message"></div>
+
+      <button class="btn btn-primary" id="save-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Save Selection
+      </button>
+
+      <button class="btn btn-ghost" id="screenshot-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        Screenshot Page
+      </button>
+
+      <button class="btn btn-ghost" id="dashboard-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        Open Dashboard
+      </button>
+
+      <div class="shortcut-hint">
+        <kbd>Alt+S</kbd> Save selection &middot; <kbd>Alt+C</kbd> Open dashboard
+      </div>
     </div>
 
-    <div id="message" class="message"></div>
+    <!-- ========== SETTINGS VIEW ========== -->
+    <div id="view-settings" class="hidden">
+      <div class="settings-row">
+        <span class="form-label" style="margin-bottom:0;">Account</span>
+        <button class="btn btn-sm btn-ghost" id="back-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Back
+        </button>
+      </div>
 
-    <button class="save-btn" id="save-btn">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-        <polyline points="17 21 17 13 7 13 7 21"/>
-        <polyline points="7 3 7 8 15 8"/>
-      </svg>
-      Save Selection
-    </button>
+      <div class="card">
+        <div class="settings-row">
+          <span class="user-email" id="user-email">user@example.com</span>
+          <button class="btn btn-sm btn-danger" id="logout-btn">Logout</button>
+        </div>
+      </div>
 
-    <button class="dashboard-btn" id="dashboard-btn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1"/>
-        <rect x="14" y="3" width="7" height="7" rx="1"/>
-        <rect x="3" y="14" width="7" height="7" rx="1"/>
-        <rect x="14" y="14" width="7" height="7" rx="1"/>
-      </svg>
-      Open Dashboard
-    </button>
+      <div class="card">
+        <div class="form-label">Gemini API Key</div>
+        <div id="key-status" class="key-status no-key">
+          <span id="key-status-text">No key configured</span>
+        </div>
+        <input class="form-input" id="gemini-key-input" type="password" placeholder="AIzaSy... (your Gemini API key)" style="margin-bottom: 10px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" id="save-key-btn" style="flex:1;">Save Key</button>
+          <button class="btn btn-ghost btn-sm" id="clear-key-btn">Clear</button>
+        </div>
+        <p style="font-size:10px;color:var(--text-tertiary);margin-top:10px;line-height:1.5;">
+          Your API key is stored locally in this browser only. It is never sent to our servers — only directly to Google's Gemini API via our backend.
+        </p>
+      </div>
 
-    <div class="shortcut-hint">
-      <kbd>Alt+S</kbd> Save selection &nbsp;&middot;&nbsp; <kbd>Alt+C</kbd> Open dashboard
+      <div class="card">
+        <div class="form-label">Data</div>
+        <button class="btn btn-ghost btn-sm" id="claim-legacy-btn" style="width:100%;">Claim Legacy Data</button>
+        <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px;line-height:1.5;">
+          If you had clips before auth was added, click to assign them to your account.
+        </p>
+      </div>
     </div>
   </div>
 
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

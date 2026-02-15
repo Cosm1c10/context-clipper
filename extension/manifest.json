@@ -15,6 +15,7 @@
     "http://localhost:8001/*",
     "https://*.vercel.app/*",
     "https://*.onrender.com/*",
+    "https://*.supabase.co/*",
     "https://*/*",
     "http://*/*"
   ],

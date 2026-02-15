@@ -4,8 +4,9 @@ import json
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 import google.generativeai as genai
 from supabase import create_client
@@ -22,14 +23,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-if not GEMINI_API_KEY:
-    print("Warning: GEMINI_API_KEY not found in .env")
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("Warning: SUPABASE_URL or SUPABASE_KEY not found in .env")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# Do NOT configure genai globally — it's per-request now (BYOK)
 
-# Initialize Supabase client
+# Initialize Supabase client (uses service_role key, bypasses RLS)
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
@@ -53,20 +52,68 @@ class SaveRequest(BaseModel):
     url: str
     metadata: Optional[dict] = None
     project_id: Optional[str] = None
-    media_type: Optional[str] = "text"  # text, image, screenshot, file
+    media_type: Optional[str] = "text"
     image_url: Optional[str] = None
     file_name: Optional[str] = None
-    screenshot_data: Optional[str] = None  # base64 data URL
+    screenshot_data: Optional[str] = None
 
 class ChatRequest(BaseModel):
     question: str
 
+# --- Dependencies ---
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> str:
+    """Extract user_id from Supabase JWT."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid auth token")
+    token = authorization.replace("Bearer ", "")
+    try:
+        user_response = await run_in_threadpool(
+            lambda: sb.auth.get_user(token)
+        )
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return str(user_response.user.id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Auth failed: {str(e)}")
+
+
+def get_gemini_key(x_gemini_key: Optional[str] = Header(None)) -> str:
+    """Get Gemini API key from request header, fallback to env."""
+    key = x_gemini_key or GEMINI_API_KEY
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail="No Gemini API key provided. Please add your key in extension settings."
+        )
+    return key
+
+
+# --- Helpers for thread pool ---
+
+def _embed_content(text, api_key, task_type="retrieval_document", title="Context Clip"):
+    """Generate embedding using per-request API key."""
+    genai.configure(api_key=api_key)
+    result = genai.embed_content(
+        model="models/gemini-embedding-001",
+        content=text,
+        task_type=task_type,
+        title=title
+    )
+    return result['embedding']
+
+
 # --- Clips ---
 
 @app.post("/save")
-async def save_clip(request: SaveRequest):
+async def save_clip(
+    request: SaveRequest,
+    user_id: str = Depends(get_current_user),
+    gemini_key: str = Depends(get_gemini_key),
+):
     try:
-        # Build embedding text from available content
         embed_text = request.text or ""
         if not embed_text and request.file_name:
             embed_text = f"File: {request.file_name}"
@@ -75,14 +122,7 @@ async def save_clip(request: SaveRequest):
         if not embed_text:
             embed_text = f"Screenshot of {request.url}"
 
-        # Generate embedding
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=embed_text,
-            task_type="retrieval_document",
-            title="Context Clip"
-        )
-        embedding = result['embedding']
+        embedding = await run_in_threadpool(_embed_content, embed_text, gemini_key)
 
         record_id = str(uuid.uuid4())
         metadata = request.metadata or {}
@@ -105,35 +145,50 @@ async def save_clip(request: SaveRequest):
             "image_url": request.image_url,
             "file_name": request.file_name,
             "screenshot_data": request.screenshot_data,
+            "user_id": user_id,
         }
 
-        sb.table("clips").insert(row).execute()
+        await run_in_threadpool(lambda: sb.table("clips").insert(row).execute())
 
         return {"status": "success", "id": record_id}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error saving clip: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/clips")
-async def save_clip_alt(request: SaveRequest):
-    return await save_clip(request)
+async def save_clip_alt(
+    request: SaveRequest,
+    user_id: str = Depends(get_current_user),
+    gemini_key: str = Depends(get_gemini_key),
+):
+    return await save_clip(request, user_id, gemini_key)
 
 @app.get("/clips")
-async def get_clips(limit: int = 50, offset: int = 0, project_id: str = None):
+async def get_clips(
+    limit: int = 50,
+    offset: int = 0,
+    project_id: str = None,
+    user_id: str = Depends(get_current_user),
+):
     try:
-        query = sb.table("clips").select("id, text, url, title, domain, word_count, timestamp, project_id, media_type, image_url, file_name, screenshot_data")
+        def _query():
+            query = sb.table("clips").select("id, text, url, title, domain, word_count, timestamp, project_id, media_type, image_url, file_name, screenshot_data")
+            query = query.eq("user_id", user_id)
+            if project_id:
+                query = query.eq("project_id", project_id)
+            return query.order("timestamp", desc=True).range(offset, offset + limit - 1).execute()
 
-        if project_id:
-            query = query.eq("project_id", project_id)
+        def _count():
+            count_query = sb.table("clips").select("id", count="exact")
+            count_query = count_query.eq("user_id", user_id)
+            if project_id:
+                count_query = count_query.eq("project_id", project_id)
+            return count_query.execute()
 
-        result = query.order("timestamp", desc=True).range(offset, offset + limit - 1).execute()
+        result, count_result = await run_in_threadpool(lambda: (_query(), _count()))
         clips = result.data
-
-        # Get total count
-        count_query = sb.table("clips").select("id", count="exact")
-        if project_id:
-            count_query = count_query.eq("project_id", project_id)
-        count_result = count_query.execute()
         total = count_result.count if count_result.count is not None else len(clips)
 
         return {
@@ -142,14 +197,21 @@ async def get_clips(limit: int = 50, offset: int = 0, project_id: str = None):
             "limit": limit,
             "offset": offset
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error getting clips: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/clips/{clip_id}")
-async def delete_clip(clip_id: str):
+async def delete_clip(
+    clip_id: str,
+    user_id: str = Depends(get_current_user),
+):
     try:
-        result = sb.table("clips").delete().eq("id", clip_id).execute()
+        result = await run_in_threadpool(
+            lambda: sb.table("clips").delete().eq("id", clip_id).eq("user_id", user_id).execute()
+        )
         if not result.data:
             raise HTTPException(status_code=404, detail="Clip not found")
         return {"status": "deleted"}
@@ -159,25 +221,26 @@ async def delete_clip(clip_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/clips/{clip_id}")
-async def update_clip(clip_id: str, request: SaveRequest):
+async def update_clip(
+    clip_id: str,
+    request: SaveRequest,
+    user_id: str = Depends(get_current_user),
+    gemini_key: str = Depends(get_gemini_key),
+):
     try:
         text_content = request.text or ""
         word_count = len(text_content.split()) if text_content.strip() else 0
 
-        # Re-generate embedding
         embed_text = text_content or f"Clip from {request.url}"
-        emb_result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=embed_text,
-            task_type="retrieval_document",
-            title="Context Clip"
-        )
+        embedding = await run_in_threadpool(_embed_content, embed_text, gemini_key)
 
-        result = sb.table("clips").update({
-            "text": text_content,
-            "word_count": word_count,
-            "embedding": emb_result['embedding'],
-        }).eq("id", clip_id).execute()
+        result = await run_in_threadpool(
+            lambda: sb.table("clips").update({
+                "text": text_content,
+                "word_count": word_count,
+                "embedding": embedding,
+            }).eq("id", clip_id).eq("user_id", user_id).execute()
+        )
 
         if not result.data:
             raise HTTPException(status_code=404, detail="Clip not found")
@@ -190,21 +253,23 @@ async def update_clip(clip_id: str, request: SaveRequest):
 # --- Chat (Semantic Search + AI) ---
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    user_id: str = Depends(get_current_user),
+    gemini_key: str = Depends(get_gemini_key),
+):
     try:
-        # Embed the question
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=request.question,
-            task_type="retrieval_query"
+        question_embedding = await run_in_threadpool(
+            _embed_content, request.question, gemini_key, "retrieval_query"
         )
-        question_embedding = result['embedding']
 
-        # Vector similarity search via Supabase RPC
-        rpc_result = sb.rpc("match_clips", {
-            "query_embedding": question_embedding,
-            "match_count": 5
-        }).execute()
+        rpc_result = await run_in_threadpool(
+            lambda: sb.rpc("match_clips", {
+                "query_embedding": question_embedding,
+                "match_count": 5,
+                "filter_user_id": user_id,
+            }).execute()
+        )
 
         context = ""
         for row in (rpc_result.data or []):
@@ -215,11 +280,17 @@ async def chat(request: ChatRequest):
         if not context:
             return {"answer": "No relevant context found to answer your question."}
 
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        prompt = f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {request.question}"
-        response = model.generate_content(prompt)
+        def _generate():
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            prompt = f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {request.question}"
+            return model.generate_content(prompt)
+
+        response = await run_in_threadpool(_generate)
         return {"answer": response.text}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,37 +298,68 @@ async def chat(request: ChatRequest):
 # --- Projects ---
 
 @app.post("/projects")
-async def create_project(project: ProjectCreate):
+async def create_project(
+    project: ProjectCreate,
+    user_id: str = Depends(get_current_user),
+):
     try:
         project_id = str(uuid.uuid4())
-        sb.table("projects").insert({
-            "id": project_id,
-            "name": project.name,
-            "description": project.description,
-        }).execute()
+        await run_in_threadpool(
+            lambda: sb.table("projects").insert({
+                "id": project_id,
+                "name": project.name,
+                "description": project.description,
+                "user_id": user_id,
+            }).execute()
+        )
         return {"id": project_id, "status": "created"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/projects")
-async def list_projects():
+async def list_projects(user_id: str = Depends(get_current_user)):
     try:
-        result = sb.table("projects").select("*").order("created_at", desc=True).execute()
+        result = await run_in_threadpool(
+            lambda: sb.table("projects").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        )
         projects = result.data
 
-        # Get clip counts per project
-        for p in projects:
-            count_result = sb.table("clips").select("id", count="exact").eq("project_id", p["id"]).execute()
-            p["clip_count"] = count_result.count if count_result.count is not None else 0
+        # Fix N+1: get all clip counts in a single query grouped by project_id
+        try:
+            clip_counts_result = await run_in_threadpool(
+                lambda: sb.rpc("get_project_clip_counts", {"filter_user_id": user_id}).execute()
+            )
+            count_map = {}
+            if clip_counts_result.data:
+                for row in clip_counts_result.data:
+                    count_map[row["project_id"]] = row["clip_count"]
+            for p in projects:
+                p["clip_count"] = count_map.get(p["id"], 0)
+        except Exception:
+            # Fallback: per-project count
+            for p in projects:
+                count_result = await run_in_threadpool(
+                    lambda pid=p["id"]: sb.table("clips").select("id", count="exact").eq("project_id", pid).eq("user_id", user_id).execute()
+                )
+                p["clip_count"] = count_result.count if count_result.count is not None else 0
 
         return projects
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/projects/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+):
     try:
-        result = sb.table("projects").delete().eq("id", project_id).execute()
+        result = await run_in_threadpool(
+            lambda: sb.table("projects").delete().eq("id", project_id).eq("user_id", user_id).execute()
+        )
         if not result.data:
             raise HTTPException(status_code=404, detail="Project not found")
         return {"status": "deleted"}
@@ -267,9 +369,14 @@ async def delete_project(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/projects/{project_id}/export")
-async def export_project_context(project_id: str):
+async def export_project_context(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+):
     try:
-        result = sb.table("clips").select("text, url, title, timestamp").eq("project_id", project_id).order("timestamp").execute()
+        result = await run_in_threadpool(
+            lambda: sb.table("clips").select("text, url, title, timestamp").eq("project_id", project_id).eq("user_id", user_id).order("timestamp").execute()
+        )
         clips = result.data
 
         if not clips:
@@ -283,13 +390,15 @@ async def export_project_context(project_id: str):
 
         full_context = "\n".join(context_parts)
         return {"context": full_context, "clip_count": len(clips)}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error exporting project: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Context Bridge ---
 
-_bridge_cache: dict = {}  # key: (project_id, latest_timestamp, clip_count)
+_bridge_cache: dict = {}
 
 
 def build_meta(clips, project):
@@ -331,7 +440,6 @@ def extract_entities(clips):
             people.add(match.strip())
         domain = c.get("domain", "")
         if domain:
-            # Extract company name from domain (remove www., .com, etc.)
             company = domain.replace("www.", "").split(".")[0]
             if len(company) > 2:
                 companies.add(company.capitalize())
@@ -363,7 +471,6 @@ def extract_key_exchanges(clips):
 
 async def synthesize_bridge_sections(clips, project_name, api_key):
     """Single Gemini Flash call for synthesis sections."""
-    # Build condensed clip summaries, capped at ~8000 chars
     summaries = []
     total_chars = 0
     for c in clips:
@@ -395,10 +502,13 @@ Clips:
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = model.generate_content(prompt)
+
+        def _generate():
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            return model.generate_content(prompt)
+
+        response = await run_in_threadpool(_generate)
         raw = response.text.strip()
-        # Strip markdown fences if present
         if raw.startswith("```"):
             raw = re.sub(r'^```(?:json)?\s*', '', raw)
             raw = re.sub(r'\s*```$', '', raw)
@@ -424,15 +534,12 @@ def enforce_token_budget(bridge, max_tokens=1500):
         text = yaml.dump(obj, sort_keys=False, allow_unicode=True)
         return int(len(text.split()) * 1.3)
 
-    # First pass: trim key_exchanges down to 2
     if estimate_tokens(bridge) > max_tokens and "key_exchanges" in bridge:
         bridge["key_exchanges"] = bridge["key_exchanges"][:2]
 
-    # Second pass: trim timeline down to 3 most recent
     if estimate_tokens(bridge) > max_tokens and "timeline" in bridge:
         bridge["timeline"] = bridge["timeline"][-3:]
 
-    # Third pass: truncate strategic_context
     if estimate_tokens(bridge) > max_tokens and "strategic_context" in bridge:
         ctx = bridge["strategic_context"]
         if isinstance(ctx, str) and len(ctx) > 200:
@@ -530,23 +637,26 @@ async def get_project_bridge(
     project_id: str,
     format: str = Query("yaml", pattern="^(yaml|json|markdown)$"),
     compact: bool = Query(False),
-    x_gemini_key: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user),
+    gemini_key: str = Depends(get_gemini_key),
 ):
     try:
-        # Fetch clips
-        clips_result = sb.table("clips").select(
-            "text, url, title, domain, word_count, timestamp"
-        ).eq("project_id", project_id).order("timestamp").execute()
+        clips_result = await run_in_threadpool(
+            lambda: sb.table("clips").select(
+                "text, url, title, domain, word_count, timestamp"
+            ).eq("project_id", project_id).eq("user_id", user_id).order("timestamp").execute()
+        )
         clips = clips_result.data
 
         if not clips:
             return {"bridge": "No clips in this project.", "clip_count": 0}
 
-        # Fetch project info
-        proj_result = sb.table("projects").select("*").eq("id", project_id).execute()
+        proj_result = await run_in_threadpool(
+            lambda: sb.table("projects").select("*").eq("id", project_id).eq("user_id", user_id).execute()
+        )
         project = proj_result.data[0] if proj_result.data else {}
 
-        # Mechanical extraction (always)
+        # Mechanical extraction
         meta = build_meta(clips, project)
         timeline = build_timeline(clips)
         entities = extract_entities(clips)
@@ -556,29 +666,12 @@ async def get_project_bridge(
         latest_ts = max(c.get("timestamp", "") for c in clips)
         cache_key = (project_id, latest_ts, len(clips))
 
-        # Check cache for LLM sections
         if cache_key in _bridge_cache:
             synth = _bridge_cache[cache_key]
         else:
-            # Use provided key or fall back to env key
-            api_key = x_gemini_key or GEMINI_API_KEY
-            if not api_key:
-                # No key available — use fallback
-                synth = {
-                    "situation": {
-                        "summary": f"Project '{meta['project_name']}' contains {len(clips)} clips.",
-                        "current_status": "Context available",
-                        "urgency": "Low",
-                    },
-                    "decisions": [],
-                    "strategic_context": f"Collection of {len(clips)} clips across various sources.",
-                    "instructions_for_llm": "Use the clips and entities above as context.",
-                }
-            else:
-                synth = await synthesize_bridge_sections(clips, meta["project_name"], api_key)
-                _bridge_cache[cache_key] = synth
+            synth = await synthesize_bridge_sections(clips, meta["project_name"], gemini_key)
+            _bridge_cache[cache_key] = synth
 
-        # Assemble full bridge
         bridge = {
             "meta": meta,
             "situation": synth.get("situation", {}),
@@ -590,7 +683,6 @@ async def get_project_bridge(
             "instructions_for_llm": synth.get("instructions_for_llm", ""),
         }
 
-        # Compact mode: only keep essential sections
         if compact:
             bridge = {
                 "meta": bridge["meta"],
@@ -599,11 +691,9 @@ async def get_project_bridge(
                 "decisions": bridge["decisions"],
             }
 
-        # Token budget enforcement for full YAML
         if format == "yaml" and not compact:
             bridge = enforce_token_budget(bridge)
 
-        # Format output
         if format == "yaml":
             output = bridge_to_yaml(bridge)
         elif format == "markdown":
@@ -613,8 +703,33 @@ async def get_project_bridge(
 
         return {"bridge": output, "clip_count": len(clips)}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error generating bridge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Admin / Migration ---
+
+@app.post("/admin/claim-legacy-data")
+async def claim_legacy_data(user_id: str = Depends(get_current_user)):
+    """Assign all clips/projects with null user_id to the current user."""
+    try:
+        clips_result = await run_in_threadpool(
+            lambda: sb.table("clips").update({"user_id": user_id}).is_("user_id", "null").execute()
+        )
+        projects_result = await run_in_threadpool(
+            lambda: sb.table("projects").update({"user_id": user_id}).is_("user_id", "null").execute()
+        )
+        claimed_clips = len(clips_result.data) if clips_result.data else 0
+        claimed_projects = len(projects_result.data) if projects_result.data else 0
+        return {
+            "status": "claimed",
+            "clips_claimed": claimed_clips,
+            "projects_claimed": claimed_projects,
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
